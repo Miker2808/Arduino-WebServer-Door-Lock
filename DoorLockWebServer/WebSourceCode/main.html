@@ -1,0 +1,75 @@
+<!DOCTYPE HTML><html>
+<head>
+<title>Door Lock WebServer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style type="text/css">
+	*{
+		font-family: Arial;
+		font-weight: bold;
+		font-size: 16px;
+		background-color: #292929;
+		color: #007b94;
+	}
+	form{
+		display: inline-block;
+	}
+	body{
+		text-align: center;
+		margin: 15% auto;
+	}
+	input[type=submit]{
+    	background-color: #007b94;
+		color: white;
+    	border: double;
+    	border-radius: 5px;
+    	padding: 10px 20px;
+		width: 220px;
+		height: 50px;
+    	text-align: center;
+    	text-decoration: none;
+    	display: inline-block;
+	}
+	input[type=submit]:hover{
+		background-color: palevioletred;
+	}
+	.title{
+		font-size: 25px;
+		text-decoration: underline;
+	}
+
+</style>
+</head>
+<body>
+	<p class="title">Door Lock</p>
+	<form id="opendoor" action="/opendoor" method="post">
+		<input type="hidden" name="DATA">
+		<input type="hidden" name="goto" value="opendoor">
+		<input type="submit" value="Open The Door" style="border:dashed">
+	</form>
+	<br><br><br>
+	<form id="enrolluser" action="/enrolluser" method="post">
+		<input type="hidden" name="DATA">
+		<input type="hidden" name="goto" value="enrolluser">
+		<input type="submit" value="Enroll New User" >
+	</form>
+	<br><br>
+	<form id="deleteuser" action="/deleteuser" method="post">
+		<input type="hidden" name="DATA">
+		<input type="hidden" name="goto" value="deleteuser">
+		<input type="submit" value="Delete Existing User" >
+	</form>
+	<br><br>
+	<form id="changepass" action="/changepass" method="post">
+		<input type="hidden" name="DATA">
+		<input type="hidden" name="goto" value="changepass">
+		<input type="submit" value="Manage Passwords">
+	</form>
+	<br><br>
+	<form id="lockdown" action="/lockdown" method="post">
+		<input type="hidden" name="DATA">
+		<input type="hidden" name="goto" value="lockdown">
+		<input type="submit" value="Lockdown: Engaged">
+	</form>
+	<br><br>
+</body>
+</html>

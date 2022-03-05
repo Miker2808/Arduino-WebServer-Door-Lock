@@ -1,0 +1,97 @@
+<!DOCTYPE HTML><html>
+<head>
+<title>Door Lock WebServer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style type="text/css">
+	*{
+		font-family: Arial;
+		font-weight: bold;
+		font-size: 16px;
+		background-color: #292929;
+		color: #007b94;
+		box-sizing: border-box;
+		margin: 5px auto;
+		
+	}
+	form{
+		display: inline-block;
+	}
+	body{
+		text-align: center;
+		margin: 15% auto;
+	}
+	input[type=submit]{
+    	background-color: #007b94;
+		color: white;
+    	border: double;
+    	border-radius: 5px;
+    	padding: 10px 20px;
+		width: 100%;
+		height: 40px;
+    	text-align: center;
+    	text-decoration: none;
+		margin: 10px auto;
+	}
+	input[type=submit]:hover{
+		background-color: palevioletred;
+	}
+
+	.input_bar{
+		background-color: #007b94;
+		color: white;
+		border-bottom: solid;
+		border-color: aqua;
+		border-radius: 5px;
+		height: 40px;
+		width: 250px;
+		padding: 10px 20px;
+		text-align: center;
+	}
+	.input_bar:hover{
+		border-color: palevioletred;
+	}
+	.title{
+		font-size: 25px;
+		text-decoration: underline;
+	}
+	table, th, td{
+		border: 2px solid;
+	}
+	.table{
+		width: 100%;
+		text-align: left;
+	}
+	::placeholder{
+		color: white;
+		text-align: center;
+	}
+	
+</style>
+</head>
+
+<body> 
+	<p>Delete a fingerprint</p>
+	<form action="/deleteuser" method="post" style="justify-content: center;">
+		<input type="hidden" name="DATA">
+		<input class="input_bar" type="number" name="user_id" min="1" max="50" step="1" required placeholder="User ID">
+		<br>
+		<input type="submit" value="Delete Finger Print">
+		<br><br><br>
+		<table class="table">
+			<tr>
+				<th>User ID</th>
+				<th>User Name</th>
+			</tr>
+		</table>
+	</form>
+	<br>
+	<form action="/usermanager" method="post" style="margin-right: 25px;">
+		<input type="hidden" name="DATA">
+		<input type="hidden" name="goto" value="mainscreen">
+		<input type="submit" value="Home" style="margin: 10px;">
+	</form>
+
+	<p>Message Here</p>
+
+</body>
+</html>

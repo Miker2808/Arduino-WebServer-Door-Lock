@@ -1,0 +1,60 @@
+<!DOCTYPE HTML><html>
+<head>
+<title>Door Lock WebServer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style type="text/css">
+	*{
+		font-family: Arial;
+		font-weight: bold;
+		font-size: 16px;
+		background-color: #292929;
+		color: #007b94;
+	}
+	p{
+		color:palevioletred;
+	}
+	form{
+		display: inline-block;
+	}
+	body{
+		text-align: center;
+		margin: 15% auto;
+	}
+	input[type=submit]{
+    	background-color: #007b94;
+		color: white;
+    	border: double;
+    	border-radius: 5px;
+    	padding: 10px 20px;
+    	text-align: center;
+    	text-decoration: none;
+    	display: inline-block;
+	}
+	input[type=submit]:hover{
+		background-color: palevioletred;
+	}
+	input[type='password']{
+		background-color: #007b94;
+		color: white;
+		border: 1;
+		border-color: aqua;
+		border-radius: 5px;
+		height: 30px;
+	}
+	input[type='password']:hover{
+		border-color: palevioletred;
+	}
+	
+</style>
+</head>
+<body>
+	<h5>Input Password</h5>
+	<form id="pw_insert" action="/login" method="post">
+		<input type="hidden" name="DATA">
+    	<input type="password" name="pw_input">
+		<br><br>
+		<input type="submit" value="Login">
+		<p>Invalid Password</p>
+	</form><br>
+</body>
+</html>
