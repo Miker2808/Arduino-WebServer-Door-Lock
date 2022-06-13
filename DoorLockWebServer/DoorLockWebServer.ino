@@ -6,7 +6,6 @@
 
 #include <SPI.h> // Came with Wifi libraries
 #include <WiFiNINA.h> // used for wifi
-#include <rBase64.h> // used to decode base64 (not in use)
 #include <FlashStorage.h> // used to store user database and passwords
 #include <Arduino.h> // used for hardware serial (communicate with touchpad arduino)
 #include "wiring_private.h" // used for hardware serial (communicate with touchpad arduino)
@@ -44,6 +43,8 @@ void SERCOM0_Handler()
 char ssid[] = "";    // your network SSID (name)
 char pass[] = "";    // your network password (use for WPA, or use as key for WEP)
 int keyIndex = 0;                // your network key index number (needed only for WEP)
+
+int wifi_reconnect_clock = 0; // when failed reconnection and wifi is off, attempt when reaches 0
 
 int status = WL_IDLE_STATUS;
 WiFiServer server(80);
@@ -116,6 +117,8 @@ void setup() {
     Serial.println("Communication with WiFi module failed!");
     // don't continue
     while (true);
+    // something very problematic here. arduino reset is required
+    // TODO: reset arduino module
   }
 
   String fv = WiFi.firmwareVersion();
@@ -153,13 +156,14 @@ void setup() {
   }
   if(status != WL_CONNECTED) {
     Serial.println("Failed connecting to wifi 3/3, going offline mode");
+    wifi_reconnect_clock = 72000;
   }
-  
 }
 
 int open_door_counter = 0; // close the door when value is 0 or smaller
 int lockdown_engaged = false;
 int inner_unlock_button_value = 0;
+
 void loop() {
   // compare the previous status to the current status
   delay(50); // having a fixed delay is good
@@ -184,12 +188,39 @@ void loop() {
     digitalWrite(8, HIGH);
     handleFingerPrintReading(finger, user_base);
   }
+
+  // decrement reconnect timer, set to 0 if equal to it or smaller.
+  wifi_reconnect_clock -= 1;
+  if (wifi_reconnect_clock <= 0){
+    wifi_reconnect_clock = 0;
+  }
+
   
   if (status != WiFi.status()) {
     // it has changed update the variable
     status = WiFi.status();
+    if(status != WL_CONNECTED){
+      Serial.println("Lost connection to wifi, reconnecting in 2 minutes");
+      wifi_reconnect_clock = 2500;
+    }
   }
 
+  if((status != WL_CONNECTED) and (wifi_reconnect_clock <= 0)){
+    // check if reconnection counter is at 0
+    Serial.print("Attempting WIFI reconnection..");
+    status = WiFi.begin(ssid, pass);
+    delay(5000);
+    if(status == WL_CONNECTED){
+      // you're connected now, so print out the status
+      printWiFiStatus();
+      wifi_reconnect_clock = 0;
+    }
+    else{
+      Serial.println("Failed reconnection, re-attempting in 1 hour");
+      wifi_reconnect_clock = 72000;
+    }
+  }
+  
   // handle receiving password input
   handleTouchScreenPassInput(user_base);
   
@@ -567,7 +598,7 @@ int deleteFingerprint(Adafruit_Fingerprint &finger, int finger_id){
 void printLoginPage(WiFiClient &client, String response){
   // refer tot he web src, html compressor was used for the source code
 
-  String html ="<!DOCTYPE HTML><html> <head> <title>Door Lock WebServer</title> <meta name=viewport content=\"width=device-width, initial-scale=1\"/> <style type=text/css>*{font-family:Arial;font-weight:bold;font-size:16px;background-color:#292929;color:#007b94}p{color:palevioletred}form{display:inline-block}body{text-align:center;margin:15% auto}input[type=submit]{background-color:#007b94;color:white;border:double;border-radius:5px;padding:10px 20px;text-align:center;text-decoration:none;display:inline-block}input[type=submit]:hover{background-color:palevioletred}input[type=submit]:active{border-color:aqua}input[type='password']{background-color:#007b94;color:white;border:1;border-color:aqua;border-radius:5px;height:30px}input[type='password']:hover{border-color:palevioletred}</style> </head> <body> <h5>Input Password</h5> <form id=pw_insert action=/login method=post> <input type=hidden name=DATA> <input type=password name=pw_input> <br><br> <input type=submit value=Login>";
+  String html ="<!DOCTYPE HTML><html> <head> <title>Simulation Team Door Lock WebServer</title> <meta name=viewport content=\"width=device-width, initial-scale=1\"/> <style type=text/css>*{font-family:Arial;font-weight:bold;font-size:16px;background-color:#292929;color:#007b94}p{color:palevioletred}form{display:inline-block}body{text-align:center;margin:15% auto}input[type=submit]{background-color:#007b94;color:white;border:double;border-radius:5px;padding:10px 20px;text-align:center;text-decoration:none;display:inline-block}input[type=submit]:hover{background-color:palevioletred}input[type=submit]:active{border-color:aqua}input[type='password']{background-color:#007b94;color:white;border:1;border-color:aqua;border-radius:5px;height:30px}input[type='password']:hover{border-color:palevioletred}</style> </head> <body> <h5>Input Password</h5> <form id=pw_insert action=/login method=post> <input type=hidden name=DATA> <input type=password name=pw_input> <br><br> <input type=submit value=Login>";
 
   client.println(html);
 
@@ -580,7 +611,7 @@ void printLoginPage(WiFiClient &client, String response){
 
 
 void printMainScreen(WiFiClient &client){
-  String html ="<!DOCTYPE HTML><html> <head> <title>Door Lock WebServer</title> <meta name=viewport content=\"width=device-width, initial-scale=1\"/> <style type=text/css>*{font-family:Arial;font-weight:bold;font-size:16px;background-color:#292929;color:#007b94}form{display:inline-block}body{text-align:center;margin:15% auto}input[type=submit]{background-color:#007b94;color:white;border:double;border-radius:5px;padding:10px 20px;width:220px;height:50px;text-align:center;text-decoration:none;display:inline-block}input[type=submit]:hover{background-color:palevioletred}.title{font-size:25px;text-decoration:underline}</style> </head> <body> <p class=title>Door Lock</p> <form id=opendoor action=/opendoor method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=opendoor> <input type=submit value=\"Open The Door\" style=border:dashed> </form> <br><br><br> <form id=enrolluser action=/enrolluser method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=enrolluser> <input type=submit value=\"Enroll New User\"> </form> <br><br> <form id=deleteuser action=/deleteuser method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=deleteuser> <input type=submit value=\"Delete Existing User\"> </form> <br><br> <form id=changepass action=/changepass method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=changepass> <input type=submit value=\"Manage Passwords\"> </form> <br><br> <form id=lockdown action=/lockdown method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=lockdown>";
+  String html ="<!DOCTYPE HTML><html> <head> <title>Simulation Team Door Lock WebServer</title> <meta name=viewport content=\"width=device-width, initial-scale=1\"/> <style type=text/css>*{font-family:Arial;font-weight:bold;font-size:16px;background-color:#292929;color:#007b94}form{display:inline-block}body{text-align:center;margin:15% auto}input[type=submit]{background-color:#007b94;color:white;border:double;border-radius:5px;padding:10px 20px;width:220px;height:50px;text-align:center;text-decoration:none;display:inline-block}input[type=submit]:hover{background-color:palevioletred}.title{font-size:25px;text-decoration:underline}</style> </head> <body> <p class=title>Simulation Team Door Lock</p> <form id=opendoor action=/opendoor method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=opendoor> <input type=submit value=\"Open The Door\" style=border:dashed> </form> <br><br><br> <form id=enrolluser action=/enrolluser method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=enrolluser> <input type=submit value=\"Enroll New User\"> </form> <br><br> <form id=deleteuser action=/deleteuser method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=deleteuser> <input type=submit value=\"Delete Existing User\"> </form> <br><br> <form id=changepass action=/changepass method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=changepass> <input type=submit value=\"Manage Passwords\"> </form> <br><br> <form id=lockdown action=/lockdown method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=lockdown>";
 
   client.println(html);
   if(lockdown_engaged == true){
@@ -597,7 +628,7 @@ void printMainScreen(WiFiClient &client){
 
 void printEnrollFinger(WiFiClient &client, dataBase &user_base, String response){
   // draw header + css
-  String html ="<!DOCTYPE HTML><html> <head> <title>Door Lock WebServer</title> <meta name=viewport content=\"width=device-width, initial-scale=1\"/> <style type=text/css>*{font-family:Arial;font-weight:bold;font-size:16px;background-color:#292929;color:#007b94;box-sizing:border-box;margin:5px auto}form{display:inline-block}body{text-align:center;margin:15% auto}input[type=submit]{background-color:#007b94;color:white;border:double;border-radius:5px;padding:10px 20px;width:100%;height:40px;text-align:center;text-decoration:none;margin:10px auto}input[type=submit]:hover{background-color:palevioletred}.input_bar{background-color:#007b94;color:white;border-bottom:solid;border-color:aqua;border-radius:5px;height:40px;width:250px;padding:10px 20px;text-align:center}.input_bar:hover{border-color:palevioletred}.title{font-size:25px;text-decoration:underline}table,th,td{border:2px solid}.table{width:100%;text-align:left}::placeholder{color:white;text-align:center}</style> </head> <body> <p style=width:90%>Enroll a new user fingerprint</p> <form id=submit_form action=/enrolluser method=post style=justify-content:center> <input type=hidden name=DATA> <input class=input_bar type=number name=user_id min=1 max=50 step=1 required placeholder=\"User ID\"> <br> <input class=input_bar type=text name=user_name minlength=1 maxlength=20 required placeholder=\"User Name\"> <br> <input type=submit value=\"Start Enrollment\"> <br> <p style=text-decoration:underline>After pressing the button</p> <p>1. Press your finger on the scanner</p> <p>and hold for 3 seconds</p> <p>2. Remove your finger</p> <p>3. Press your finger again</p> <p style=text-decoration:underline> System will wait 10 seconds </p> <p> before timing out</p> <br> <table class=table> <tr> <th>User ID</th> <th>User Name</th> </tr>";
+  String html ="<!DOCTYPE HTML><html> <head> <title>Simulation Team Door Lock WebServer</title> <meta name=viewport content=\"width=device-width, initial-scale=1\"/> <style type=text/css>*{font-family:Arial;font-weight:bold;font-size:16px;background-color:#292929;color:#007b94;box-sizing:border-box;margin:5px auto}form{display:inline-block}body{text-align:center;margin:15% auto}input[type=submit]{background-color:#007b94;color:white;border:double;border-radius:5px;padding:10px 20px;width:100%;height:40px;text-align:center;text-decoration:none;margin:10px auto}input[type=submit]:hover{background-color:palevioletred}.input_bar{background-color:#007b94;color:white;border-bottom:solid;border-color:aqua;border-radius:5px;height:40px;width:250px;padding:10px 20px;text-align:center}.input_bar:hover{border-color:palevioletred}.title{font-size:25px;text-decoration:underline}table,th,td{border:2px solid}.table{width:100%;text-align:left}::placeholder{color:white;text-align:center}</style> </head> <body> <p style=width:90%>Enroll a new user fingerprint</p> <form id=submit_form action=/enrolluser method=post style=justify-content:center> <input type=hidden name=DATA> <input class=input_bar type=number name=user_id min=1 max=50 step=1 required placeholder=\"User ID\"> <br> <input class=input_bar type=text name=user_name minlength=1 maxlength=20 required placeholder=\"User Name\"> <br> <input type=submit value=\"Start Enrollment\"> <br> <p style=text-decoration:underline>After pressing the button</p> <p>1. Press your finger on the scanner</p> <p>and hold for 3 seconds</p> <p>2. Remove your finger</p> <p>3. Press your finger again</p> <p style=text-decoration:underline> System will wait 10 seconds </p> <p> before timing out</p> <br> <table class=table> <tr> <th>User ID</th> <th>User Name</th> </tr>";
 
   client.println(html);
   //print row of user data assigned
@@ -624,7 +655,7 @@ void printEnrollFinger(WiFiClient &client, dataBase &user_base, String response)
 void printDeleteFinger(WiFiClient &client, dataBase &user_base, String response){
   // draw header + css
 
-  String html ="<!DOCTYPE HTML><html> <head> <title>Door Lock WebServer</title> <meta name=viewport content=\"width=device-width, initial-scale=1\"/> <style type=text/css>*{font-family:Arial;font-weight:bold;font-size:16px;background-color:#292929;color:#007b94;box-sizing:border-box;margin:5px auto}form{display:inline-block}body{text-align:center;margin:15% auto}input[type=submit]{background-color:#007b94;color:white;border:double;border-radius:5px;padding:10px 20px;width:100%;height:40px;text-align:center;text-decoration:none;margin:10px auto}input[type=submit]:hover{background-color:palevioletred}.input_bar{background-color:#007b94;color:white;border-bottom:solid;border-color:aqua;border-radius:5px;height:40px;width:250px;padding:10px 20px;text-align:center}.input_bar:hover{border-color:palevioletred}.title{font-size:25px;text-decoration:underline}table,th,td{border:2px solid}.table{width:100%;text-align:left}::placeholder{color:white;text-align:center}</style> </head> <body> <p>Delete a fingerprint</p> <form action=/deleteuser method=post style=justify-content:center> <input type=hidden name=DATA> <input class=input_bar type=number name=user_id min=1 max=50 step=1 required placeholder=\"User ID\"> <br> <input type=submit value=\"Delete Finger Print\"> <br><br><br> <table class=table> <tr> <th>User ID</th> <th>User Name</th> </tr>";
+  String html ="<!DOCTYPE HTML><html> <head> <title>Simulation Team Door Lock WebServer</title> <meta name=viewport content=\"width=device-width, initial-scale=1\"/> <style type=text/css>*{font-family:Arial;font-weight:bold;font-size:16px;background-color:#292929;color:#007b94;box-sizing:border-box;margin:5px auto}form{display:inline-block}body{text-align:center;margin:15% auto}input[type=submit]{background-color:#007b94;color:white;border:double;border-radius:5px;padding:10px 20px;width:100%;height:40px;text-align:center;text-decoration:none;margin:10px auto}input[type=submit]:hover{background-color:palevioletred}.input_bar{background-color:#007b94;color:white;border-bottom:solid;border-color:aqua;border-radius:5px;height:40px;width:250px;padding:10px 20px;text-align:center}.input_bar:hover{border-color:palevioletred}.title{font-size:25px;text-decoration:underline}table,th,td{border:2px solid}.table{width:100%;text-align:left}::placeholder{color:white;text-align:center}</style> </head> <body> <p>Delete a fingerprint</p> <form action=/deleteuser method=post style=justify-content:center> <input type=hidden name=DATA> <input class=input_bar type=number name=user_id min=1 max=50 step=1 required placeholder=\"User ID\"> <br> <input type=submit value=\"Delete Finger Print\"> <br><br><br> <table class=table> <tr> <th>User ID</th> <th>User Name</th> </tr>";
 
   client.println(html);
   //print row of user data assigned
@@ -650,7 +681,7 @@ void printDeleteFinger(WiFiClient &client, dataBase &user_base, String response)
 void printChangePass(WiFiClient &client, String response){
   // draw header + css
 
-  String html ="<!DOCTYPE HTML><html> <head> <title>Door Lock WebServer</title> <meta name=viewport content=\"width=device-width, initial-scale=1\"/> <style type=text/css>*{font-family:Arial;font-weight:bold;font-size:16px;background-color:#292929;color:#007b94;box-sizing:border-box;margin:5px auto}form{display:inline-block}body{text-align:center;margin:15% auto}input[type=submit]{background-color:#007b94;color:white;border:double;border-radius:5px;padding:10px 20px;width:100%;height:40px;text-align:center;text-decoration:none;margin:10px auto}input[type=submit]:hover{background-color:palevioletred}.input_bar{background-color:#007b94;color:white;border-bottom:solid;border-color:aqua;border-radius:5px;height:40px;width:100%;padding:10px 20px;text-align:center}.input_bar:hover{border-color:palevioletred}::placeholder{color:white;text-align:center}</style> </head> <body> <p>Assign New Passwords</p> <form class=manageuser action=/changepass method=post> <input type=hidden name=DATA> <input class=input_bar type=text name=webpass maxlength=20 required placeholder=\"Insert Web Password\"> <br> <input type=submit value=\"Change Password\"> </form> <br> <br> <form class=manageuser action=/changepass method=post> <input type=hidden name=DATA> <input class=input_bar type=text name=doorpass maxlength=6 minlength=4 required placeholder=\"Insert Door Password\" pattern=[0-9]{1,6}> <br> <input type=submit value=\"Change Password\"> </form> <br>";
+  String html ="<!DOCTYPE HTML><html> <head> <title>Simulation Team Door Lock WebServer</title> <meta name=viewport content=\"width=device-width, initial-scale=1\"/> <style type=text/css>*{font-family:Arial;font-weight:bold;font-size:16px;background-color:#292929;color:#007b94;box-sizing:border-box;margin:5px auto}form{display:inline-block}body{text-align:center;margin:15% auto}input[type=submit]{background-color:#007b94;color:white;border:double;border-radius:5px;padding:10px 20px;width:100%;height:40px;text-align:center;text-decoration:none;margin:10px auto}input[type=submit]:hover{background-color:palevioletred}.input_bar{background-color:#007b94;color:white;border-bottom:solid;border-color:aqua;border-radius:5px;height:40px;width:100%;padding:10px 20px;text-align:center}.input_bar:hover{border-color:palevioletred}::placeholder{color:white;text-align:center}</style> </head> <body> <p>Assign New Passwords</p> <form class=manageuser action=/changepass method=post> <input type=hidden name=DATA> <input class=input_bar type=text name=webpass maxlength=20 required placeholder=\"Insert Web Password\"> <br> <input type=submit value=\"Change Password\"> </form> <br> <br> <form class=manageuser action=/changepass method=post> <input type=hidden name=DATA> <input class=input_bar type=text name=doorpass maxlength=6 minlength=4 required placeholder=\"Insert Door Password\" pattern=[0-9]{1,6}> <br> <input type=submit value=\"Change Password\"> </form> <br>";
 
   client.print(html);
   // print response
