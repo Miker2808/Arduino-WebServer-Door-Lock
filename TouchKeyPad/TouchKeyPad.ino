@@ -17,15 +17,7 @@
 #define TS_MAXX 3800
 #define TS_MAXY 4000
 
-// The STMPE610 uses hardware SPI on the shield, and #8
-#define STMPE_CS 8
-Adafruit_STMPE610 ts = Adafruit_STMPE610(STMPE_CS);
-
-// The display also uses hardware SPI, plus #9 & #10
-#define TFT_CS 10
-#define TFT_DC 9
-Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
-
+// COLOR HEX VALUES
 #define BLACK      0x0000
 #define BLUE       0x001F
 #define RED        0xF800
@@ -37,25 +29,58 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 #define DARK_GRAY  0x1111
 #define LIGHT_GRAY 0XCCCC
 
-// used to remember what key was touched last iteration
-int pressed_j = 0;
-int pressed_i = 0;
-char pressed_char = 0;
-bool was_pressed = false;
-String input_pass = "";
-int stay_awake_counter = 250; // turn screen off when reaching 0
+// The STMPE610 uses hardware SPI on the shield, and #8
+#define STMPE_CS 8
 
+// The display also uses hardware SPI, plus #9 & #10
+#define TFT_CS 10
+#define TFT_DC 9
+
+#define DEFAULT_SCREEN_TIME 250 // default time in iterations the screen will stay on.
+
+#define BUTTON_HEIGHT 55
+#define BUTTON_WIDTH 70
+#define BTN_HORZ_OFST 5 // Distance between buttons horizantaly (BUTTON_HORIZANTAL_OFFSET)
+#define BTN_GLBL_HORZ_OFST 11 // Distance between leftmost button to the screen's edge (BUTTON_GLOBAL_HORIZANTAL_OFFSET)
+#define BTN_GLBL_VERT_OFST 60 // Distance between top button to the screen's edge (BUTTON_GLOBAL_VERTICAL_OFFSET)
+#define BTN_LINE_WIDTH 2 // Width of the black line surrounding a button
+
+#define ASCII_ZERO 48
+
+// Touch screen object
+Adafruit_STMPE610 ts = Adafruit_STMPE610(STMPE_CS);
+
+// LED screen object
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
+
+// used to remember what key was touched last iteration
+int pressed_j = 0; // The j'th index ( given buttons seperated are in matrix of (i,j))
+int pressed_i = 0; // The i'th index ( given buttons seperated are in matrix of (i,j))
+char pressed_char = 0; // The chosen character that was touched in the touch screen (Based on area)
+
+bool was_pressed = false; // keep track if the touch screen (ts) was activated by touch last iteration.
+String input_pass = "";
+int stay_awake_counter = DEFAULT_SCREEN_TIME; // turn screen off when reaching 0
+
+// some values are handpicked by trail and error, and are simply small offsets 
+// to center everything ass the screen size is fixed and not dynamic
 void draw_keypad_char(int i, int j, int input_char, int color_block, int color_text, int text_size = 2) {
-  tft.fillRect(11 + j * 75, 75 + i * 60, 70, 55, color_block);
-  tft.drawRect(11 - 2 + j * 75, 75 - 2 + i * 60, 70 + 2, 55 + 2, color_text);
-  tft.drawChar(11 + 20 + j * 75, 75 + 42 + i * 60, input_char, color_text, 0, text_size);
+  tft.fillRect(BTN_GLBL_HORZ_OFST + j * (BUTTON_WIDTH + BTN_HORZ_OFST), 
+              (BUTTON_WIDTH + BTN_HORZ_OFST) + BTN_HORZ_OFST + i * BTN_GLBL_VERT_OFST, BUTTON_WIDTH, BUTTON_HEIGHT, color_block);
+  tft.drawRect(BTN_GLBL_HORZ_OFST - 2 + j * (BUTTON_WIDTH + BTN_HORZ_OFST), 
+              (BUTTON_WIDTH + BTN_HORZ_OFST) - 2 + i * BTN_GLBL_VERT_OFST, BUTTON_WIDTH + 2, BUTTON_HEIGHT + 2, color_text);
+  tft.drawChar(BTN_GLBL_HORZ_OFST + 20 + j *(BUTTON_WIDTH + BTN_HORZ_OFST), 
+              (BUTTON_WIDTH + BTN_HORZ_OFST) + 42 + i * BTN_GLBL_VERT_OFST, input_char, color_text, 0, text_size);
 
 }
 
 void draw_keypad_string(int i, int j, int color_block, int color_text, String input_text, int text_size = 1) {
-  tft.fillRect(11 + j * 75, 75 + i * 60, 70, 55, color_block);
-  tft.drawRect(11 - 2 + j * 75, 75 - 2 + i * 60, 70 + 2, 55 + 2, BLACK);
-  tft.setCursor(11 + 12 + j * 75, 75 + 35 + i * 60);
+  tft.fillRect(BTN_GLBL_HORZ_OFST + j * (BUTTON_WIDTH + BTN_HORZ_OFST),
+               (BUTTON_WIDTH + BTN_HORZ_OFST) + i * BTN_GLBL_VERT_OFST, BUTTON_WIDTH, BUTTON_HEIGHT, color_block);
+  tft.drawRect(BTN_GLBL_HORZ_OFST - 2 + j * (BUTTON_WIDTH + BTN_HORZ_OFST),
+               (BUTTON_WIDTH + BTN_HORZ_OFST) - 2 + i * BTN_GLBL_VERT_OFST, BUTTON_WIDTH + 2, BUTTON_HEIGHT + 2, BLACK);
+  tft.setCursor(BTN_GLBL_HORZ_OFST + 12 + j * (BUTTON_WIDTH + BTN_HORZ_OFST),
+               (BUTTON_WIDTH + BTN_HORZ_OFST) + 35 + i * BTN_GLBL_VERT_OFST);
   tft.setTextColor(color_text);
   tft.setTextSize(text_size);
   tft.print(input_text);
@@ -72,7 +97,7 @@ void reset_screen() {
   // fill the screen with black
   tft.fillScreen(WHITE);
 
-  char count_char = 49;
+  char count_char = ASCII_ZERO + 1; // start at ascii '1'
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 3; j++) {
       if (i == 3) {
@@ -81,7 +106,7 @@ void reset_screen() {
 
         }
         else if (j == 1) {
-          draw_keypad_char(i, j, 48, BLACK, WHITE);
+          draw_keypad_char(i, j, ASCII_ZERO, BLACK, WHITE);
 
         }
         else if (j == 2) {
@@ -287,10 +312,10 @@ void setup() {
 
   // object for touch controller (To read touch input)
   if (!ts.begin()) {
-    //Serial.println("Couldn't start touchscreen controller");
+    Serial.println("Couldn't start touchscreen controller");
     // set reboot
   }
-  //Serial.println("Touchscreen started");
+  
 
   tft.setFont(&FreeMonoBold12pt7b);
 
@@ -320,12 +345,12 @@ void loop()
     if(stay_awake_counter <= 0){
       reset_screen();
       TS_Point p = ts.getPoint(); // to clean buffer
-      stay_awake_counter = 250;
+      stay_awake_counter = DEFAULT_SCREEN_TIME;
       input_pass = "";
       delay(500);
       return;
     }
-    stay_awake_counter = 250;
+    stay_awake_counter = DEFAULT_SCREEN_TIME;
     
     char pressed_value = 0;
     // Retrieve a point

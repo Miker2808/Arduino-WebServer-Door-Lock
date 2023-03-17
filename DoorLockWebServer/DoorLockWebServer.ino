@@ -2,7 +2,7 @@
 
 // Software written by: Michael Pogodin
 // Contact: miker2808@gmail.com
-// Last Edit: 24/12/2021
+// Last Edit: 18/03/2023
 
 #include <SPI.h> // Came with Wifi libraries
 #include <WiFiNINA.h> // used for wifi
@@ -10,6 +10,28 @@
 #include <Arduino.h> // used for hardware serial (communicate with touchpad arduino)
 #include "wiring_private.h" // used for hardware serial (communicate with touchpad arduino)
 #include <Adafruit_Fingerprint.h>
+
+
+#define USER_DATABASE_SIZE 52
+#define MAX_STRING_LENGTH 25
+#define HARDWARE_SERIAL_PIN_NUM_RX 5
+#define HARDWARE_SERIAL_PIN_NUM_TX 6
+#define KEYPAD_SERIAL_BAUDRATE 115200
+#define DEFAULT_SERIAL_BAUDRATE 9600
+#define FINGERPRINT_SERIAL_BAUDRATE 57600
+#define DEFAULT_DOOR_PASSWORD 321321
+#define DEFAULT_WEB_PASSWORD "123123"
+#define DEFAULT_USER_ID 51
+#define DEFAULT_USER_NAME "Admin"
+#define DEFAULT_PORT 80
+#define DEFAULT_STANDBY_RECONNECTION_TIME 72000 // default time to wait until the controller will attempt to reconnect to wifi
+// initiated only 3 failures (Default: 1 Hour)
+#define DEFAULT_CYCLE_RECONNECTION_TIME 5000 // default time between reconnection attempts on the 1-3 cycle
+#define DOOR_WAIT_TIME 100 // number of iterations to wait until the magnetic door will close
+#define DOOR_PASSWORD_MAX_INT 
+
+const int default_ipv4[4] = [192,168,0,2]
+
 
 // struct of the http request
 struct httpRequest{
@@ -25,13 +47,13 @@ struct dataBase{
   bool not_first_run;
   bool lockdown_mode;
   int door_password;
-  char web_password[25];
-  char user_name[52][25]; 
+  char web_password[MAX_STRING_LENGTH];
+  char user_name[USER_DATABASE_SIZE][MAX_STRING_LENGTH]; 
 };
 
 //// used for the hardware serial
 // used to assign pin 5,6 as hardware serial
-Uart keypadSerial (&sercom0, 5, 6, SERCOM_RX_PAD_1, UART_TX_PAD_0);
+Uart keypadSerial (&sercom0, HARDWARE_SERIAL_PIN_NUM_RX, HARDWARE_SERIAL_PIN_NUM_TX, SERCOM_RX_PAD_1, UART_TX_PAD_0);
 // Attach the interrupt handler to the SERCOM
 void SERCOM0_Handler()
 {
@@ -47,7 +69,7 @@ int keyIndex = 0;                // your network key index number (needed only f
 int wifi_reconnect_clock = 0; // when failed reconnection and wifi is off, attempt when reaches 0
 
 int status = WL_IDLE_STATUS;
-WiFiServer server(80);
+WiFiServer server(DEFAULT_PORT);
 
 // define Serial1 (Rx,Tx pins) to fingerSerial (easier for work)
 #define fingerSerial Serial1
@@ -63,11 +85,11 @@ void setup() {
   pinPeripheral(5, PIO_SERCOM_ALT);
   pinPeripheral(6, PIO_SERCOM_ALT);
   // Start assigned hardware serial
-  keypadSerial.begin(115200);
+  keypadSerial.begin(KEYPAD_SERIAL_BAUDRATE);
   
   //Initialize serial and wait for port to open:
-  Serial.begin(9600);
-  finger.begin(57600);
+  Serial.begin(DEFAULT_SERIAL_BAUDRATE);
+  finger.begin(FINGERPRINT_SERIAL_BAUDRATE);
 
   if (finger.verifyPassword()) {
     Serial.println("Found fingerprint sensor!");
@@ -94,14 +116,14 @@ void setup() {
     // assign values for first setup (after flash)
     user_base.lockdown_mode = false;
     user_base.not_first_run = true;
-    user_base.door_password = 321321;
-    String default_web_password = "123123";
-    default_web_password.toCharArray(user_base.web_password, 25);
+    user_base.door_password = DEFAULT_DOOR_PASSWORD;
+    String default_web_password = DEFAULT_WEB_PASSWORD;
+    default_web_password.toCharArray(user_base.web_password, MAX_STRING_LENGTH);
 
     Serial.println("Asigning default User: Admin - ID: 51");
     // assigning default first user: (Protected)
-    String default_user_name = "Admin";
-    default_user_name.toCharArray(user_base.user_name[51], 25);
+    String default_user_name = DEFAULT_USER_NAME;
+    default_user_name.toCharArray(user_base.user_name[DEFAULT_USER_ID], MAX_STRING_LENGTH);
 
     // write the data to flash
     userBase_storage.write(user_base);
@@ -127,7 +149,7 @@ void setup() {
   }
 
   // Configure device IP addres
-   WiFi.config(IPAddress(10, 0, 40, 250));
+  WiFi.config(IPAddress(default_ipv4[0], default_ipv4[1], default_ipv4[2], default_ipv4[3]));
 
   // print the network name (SSID);
   Serial.print("Connecting to wifi: ");
@@ -144,7 +166,7 @@ void setup() {
     }
     else{
       // wait 5 seconds for connection:
-      delay(5000);
+      delay(DEFAULT_CYCLE_RECONNECTION_TIME);
     
       // start the web server on port 80
       server.begin();
@@ -156,7 +178,7 @@ void setup() {
   }
   if(status != WL_CONNECTED) {
     Serial.println("Failed connecting to wifi 3/3, going offline mode");
-    wifi_reconnect_clock = 72000;
+    wifi_reconnect_clock = DEFAULT_STANDBY_RECONNECTION_TIME;
   }
 }
 
@@ -171,7 +193,7 @@ void loop() {
   inner_unlock_button_value = digitalRead(7);
 
   if(inner_unlock_button_value == LOW){
-    open_door_counter = 100;
+    open_door_counter = DOOR_WAIT_TIME;
   }
 
   // if / else statement used to check how much is left for the door to stay open
@@ -195,13 +217,13 @@ void loop() {
     wifi_reconnect_clock = 0;
   }
 
-  
+  // check wifi status to make sure wifi did not disconnect.
   if (status != WiFi.status()) {
     // it has changed update the variable
     status = WiFi.status();
     if(status != WL_CONNECTED){
       Serial.println("Lost connection to wifi, reconnecting in 2 minutes");
-      wifi_reconnect_clock = 2500;
+      wifi_reconnect_clock = DEFAULT_CYCLE_RECONNECTION_TIME;
     }
   }
 
@@ -217,7 +239,7 @@ void loop() {
     }
     else{
       Serial.println("Failed reconnection, re-attempting in 1 hour");
-      wifi_reconnect_clock = 72000;
+      wifi_reconnect_clock = DEFAULT_EXHAUSTED_RECONNECTION_TIME;
     }
   }
   
@@ -287,7 +309,7 @@ void loop() {
             }
             
             else if(client_request.data == "goto=opendoor"){
-              open_door_counter = 100;
+              open_door_counter = DOOR_WAIT_TIME;
               digitalWrite(8, LOW); // do it before printing the client back to speed up the process
               keypadSerial.print("PSWD:");
               keypadSerial.println("GOOD");
@@ -299,7 +321,7 @@ void loop() {
               if(client_request.data.startsWith("user_id")){
                 int user_id = extractUserID(client_request.data);
                 String user_name = extractUserName(client_request.data);
-                if((user_id > 0 and user_id < 51) and (user_name.length() < 21 and user_name.length() > 0)){
+                if((user_id > 0 and user_id < USER_DATABASE_SIZE - 1) and (user_name.length() < 21 and user_name.length() > 0)){
                   //given valid ID and username assign to database
                   int status_good = 1;
                   status_good = assignFingerPrint(finger, user_id);
@@ -373,7 +395,7 @@ void loop() {
             else if(client_request.data.startsWith("doorpass")){
               String door_password_str = client_request.data.substring(9);
               int door_password = door_password_str.toInt();
-              if((door_password > 0 and door_password < 1000000) and (door_password_str.length() <= 6 and door_password_str.length() > 0)){
+              if((door_password > 0 and door_password < DOOR_PASSWORD_MAX_INT) and (door_password_str.length() <= 6 and door_password_str.length() > 0)){
                 user_base.door_password = door_password;
                 userBase_storage.write(user_base);
                 printChangePass(client, "Changed door password successfully");
@@ -404,6 +426,7 @@ void loop() {
   }
 }
 
+// utility function to print device's mac address
 void printMacAddress(byte mac[]) {
   for (int i = 5; i >= 0; i--) {
     if (mac[i] < 16) {
@@ -417,6 +440,7 @@ void printMacAddress(byte mac[]) {
   Serial.println();
 }
 
+// utility function to print wifi's current state and configuration
 void printWiFiStatus() {
   // print the SSID of the network you're attached to:
   Serial.print("SSID: ");
@@ -452,6 +476,7 @@ String readWifiLine(WiFiClient &client){
   return output_string;
 }
 
+// function used to extract userID as integer from http post
 int extractUserID(String post_data){
   int index_of_ampersand = post_data.indexOf('&');
   if(index_of_ampersand > 0){
@@ -466,6 +491,7 @@ int extractUserID(String post_data){
   return -1;
 }
 
+// function used to exctract user string from http post
 String extractUserName(String post_data){
   int index_of_ampersand = post_data.indexOf('&');
   if(index_of_ampersand > 0){
@@ -478,6 +504,8 @@ String extractUserName(String post_data){
   return "invalid";
 }
 
+
+// function used to parse HTTP packet and reconstruct it into httpRequest
 httpRequest ParseHttpRequest(WiFiClient &client){
   httpRequest client_request;
   String start_key = "DATA=&"; // key to assign start of post data
@@ -503,7 +531,10 @@ httpRequest ParseHttpRequest(WiFiClient &client){
   }
 }
 
-
+// Function is used to assign a add a fingerprint to the database
+// each loop is a different phase, first waiting for finger to press (a standby loop)
+// second used to wait for fingerprint sensor to register the first image
+// third is the final the re-reading of fingerprint (required by sensor)
 int assignFingerPrint(Adafruit_Fingerprint &finger, int finger_id){
   //return what step you completed
   int finger_status = -1;
@@ -595,6 +626,7 @@ int deleteFingerprint(Adafruit_Fingerprint &finger, int finger_id){
 }
 
 
+// Print HTML login page
 void printLoginPage(WiFiClient &client, String response){
   // refer tot he web src, html compressor was used for the source code
 
@@ -609,7 +641,7 @@ void printLoginPage(WiFiClient &client, String response){
   client.println(html_end);
 }
 
-
+// Print HTML main page
 void printMainScreen(WiFiClient &client){
   String html ="<!DOCTYPE HTML><html> <head> <title>Simulation Team Door Lock WebServer</title> <meta name=viewport content=\"width=device-width, initial-scale=1\"/> <style type=text/css>*{font-family:Arial;font-weight:bold;font-size:16px;background-color:#292929;color:#007b94}form{display:inline-block}body{text-align:center;margin:15% auto}input[type=submit]{background-color:#007b94;color:white;border:double;border-radius:5px;padding:10px 20px;width:220px;height:50px;text-align:center;text-decoration:none;display:inline-block}input[type=submit]:hover{background-color:palevioletred}.title{font-size:25px;text-decoration:underline}</style> </head> <body> <p class=title>Simulation Team Door Lock</p> <form id=opendoor action=/opendoor method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=opendoor> <input type=submit value=\"Open The Door\" style=border:dashed> </form> <br><br><br> <form id=enrolluser action=/enrolluser method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=enrolluser> <input type=submit value=\"Enroll New User\"> </form> <br><br> <form id=deleteuser action=/deleteuser method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=deleteuser> <input type=submit value=\"Delete Existing User\"> </form> <br><br> <form id=changepass action=/changepass method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=changepass> <input type=submit value=\"Manage Passwords\"> </form> <br><br> <form id=lockdown action=/lockdown method=post> <input type=hidden name=DATA> <input type=hidden name=goto value=lockdown>";
 
@@ -626,6 +658,7 @@ void printMainScreen(WiFiClient &client){
   }
 }
 
+// Print HTML fingerprint enrollment page
 void printEnrollFinger(WiFiClient &client, dataBase &user_base, String response){
   // draw header + css
   String html ="<!DOCTYPE HTML><html> <head> <title>Simulation Team Door Lock WebServer</title> <meta name=viewport content=\"width=device-width, initial-scale=1\"/> <style type=text/css>*{font-family:Arial;font-weight:bold;font-size:16px;background-color:#292929;color:#007b94;box-sizing:border-box;margin:5px auto}form{display:inline-block}body{text-align:center;margin:15% auto}input[type=submit]{background-color:#007b94;color:white;border:double;border-radius:5px;padding:10px 20px;width:100%;height:40px;text-align:center;text-decoration:none;margin:10px auto}input[type=submit]:hover{background-color:palevioletred}.input_bar{background-color:#007b94;color:white;border-bottom:solid;border-color:aqua;border-radius:5px;height:40px;width:250px;padding:10px 20px;text-align:center}.input_bar:hover{border-color:palevioletred}.title{font-size:25px;text-decoration:underline}table,th,td{border:2px solid}.table{width:100%;text-align:left}::placeholder{color:white;text-align:center}</style> </head> <body> <p style=width:90%>Enroll a new user fingerprint</p> <form id=submit_form action=/enrolluser method=post style=justify-content:center> <input type=hidden name=DATA> <input class=input_bar type=number name=user_id min=1 max=50 step=1 required placeholder=\"User ID\"> <br> <input class=input_bar type=text name=user_name minlength=1 maxlength=20 required placeholder=\"User Name\"> <br> <input type=submit value=\"Start Enrollment\"> <br> <p style=text-decoration:underline>After pressing the button</p> <p>1. Press your finger on the scanner</p> <p>and hold for 3 seconds</p> <p>2. Remove your finger</p> <p>3. Press your finger again</p> <p style=text-decoration:underline> System will wait 10 seconds </p> <p> before timing out</p> <br> <table class=table> <tr> <th>User ID</th> <th>User Name</th> </tr>";
@@ -652,6 +685,7 @@ void printEnrollFinger(WiFiClient &client, dataBase &user_base, String response)
   
 }
 
+// HTML response after a user deletes a fingerprint
 void printDeleteFinger(WiFiClient &client, dataBase &user_base, String response){
   // draw header + css
 
@@ -677,7 +711,7 @@ void printDeleteFinger(WiFiClient &client, dataBase &user_base, String response)
   client.println("<p>" + response + "</p></body></html>");
 }
 
-
+// HTML response after user changes password
 void printChangePass(WiFiClient &client, String response){
   // draw header + css
 
@@ -693,6 +727,7 @@ void printChangePass(WiFiClient &client, String response){
   client.print(html_end);
 }
 
+// query fingerprint sensor and act accordingly (Open door, or not)
 void handleFingerPrintReading(Adafruit_Fingerprint &finger, dataBase &user_base){
   int finger_status = finger.getImage();
   if(finger_status == FINGERPRINT_OK){
@@ -717,7 +752,7 @@ void handleFingerPrintReading(Adafruit_Fingerprint &finger, dataBase &user_base)
         // found a match and a fingerprint..
         Serial.print("Found User: ");
         Serial.println(user_base.user_name[finger_id]);
-        open_door_counter = 100;
+        open_door_counter = DOOR_WAIT_TIME;
         keypadSerial.print("FNGR:");
         keypadSerial.println(user_base.user_name[finger_id]);
         delay(100);
@@ -728,6 +763,7 @@ void handleFingerPrintReading(Adafruit_Fingerprint &finger, dataBase &user_base)
   }
 }
 
+// handle keypad password message and act accordingly (matching user_base value)
 void handleTouchScreenPassInput(dataBase &user_base){
   if(keypadSerial.available() > 0){
     String received_input = keypadSerial.readStringUntil('\n');
@@ -743,8 +779,8 @@ void handleTouchScreenPassInput(dataBase &user_base){
         return;
       }
       else if(input_password == user_base.door_password){
-        // send to door "access granted, blabla"
-        open_door_counter = 100;
+        // send to door "access granted" to the touch screen
+        open_door_counter = DOOR_WAIT_TIME;
         Serial.println("PSWD:GOOD");
         keypadSerial.print("PSWD:");
         keypadSerial.println("GOOD");
@@ -763,6 +799,8 @@ void handleTouchScreenPassInput(dataBase &user_base){
   }
 }
 
+// Experimentation functions to use HTTP's buitlin password query to request a password
+// similar to the way routers do it.
 /*
 void printInvalid(WiFiClient &client){
   client.println("HTTP/1.1 400 Bad Request");
